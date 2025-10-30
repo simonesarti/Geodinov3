@@ -49,14 +49,28 @@ logger = logging.getLogger("dinov3")
 
 def get_args_parser(add_help: bool = True):
     parser = argparse.ArgumentParser("DINOv3 training", add_help=add_help)
-    parser.add_argument("--config-file", default="", metavar="FILE", help="path to config file")
+    parser.add_argument(
+        "--config-file",
+        default="",
+        metavar="FILE",
+        help="path to config file"
+    )
     parser.add_argument(
         "--no-resume",
         action="store_true",
         help="Whether to not attempt to resume from the checkpoint directory. ",
     )
-    parser.add_argument("--eval-only", action="store_true", help="perform evaluation only")
-    parser.add_argument("--eval", type=str, default="", help="Eval type to perform")
+    parser.add_argument(
+        "--eval-only",
+        action="store_true",
+        help="perform evaluation only"
+    )
+    parser.add_argument(
+        "--eval",
+        type=str,
+        default="",
+        help="Eval type to perform"
+    )
     parser.add_argument(
         "--eval_pretrained_weights",
         type=str,
@@ -79,7 +93,12 @@ For python-based LazyConfig, use "path.key=value".
         type=str,
         help="Path to save logs and checkpoints.",
     )
-    parser.add_argument("--seed", default=0, type=int, help="RNG seed")
+    parser.add_argument(
+        "--seed",
+        default=0,
+        type=int,
+        help="RNG seed"
+    )
     parser.add_argument(
         "--benchmark-codebase",
         action="store_true",
@@ -91,6 +110,7 @@ For python-based LazyConfig, use "path.key=value".
     parser.add_argument("--record_ref_losses", action="store_true", help="record reference losses")
     parser.add_argument("--ref_losses_path", default="", type=str)
     parser.add_argument("--multi-distillation", action="store_true", help="run multi-distillation")
+
 
     return parser
 
@@ -248,7 +268,11 @@ def do_test(cfg, model, iteration, process_group, do_low_freq=False):
         torch.distributed.barrier()
         teacher_backbone = model.model_ema
         save_checkpoint(
-            ckpt_dir=ckpt_path, iteration=iteration, model=teacher_backbone, overwrite=True, process_group=process_group
+            ckpt_dir=ckpt_path,
+            iteration=iteration,
+            model=teacher_backbone,
+            overwrite=True,
+            process_group=process_group,
         )
         if not distributed.is_subgroup_main_process():
             return
@@ -282,9 +306,7 @@ def build_data_loader_from_cfg(
     if cfg.multidistillation.enabled:
         assert cfg.multidistillation.global_batch_size % distributed.get_subgroup_size() == 0
         local_batch_size = cfg.multidistillation.global_batch_size // distributed.get_subgroup_size()
-        dataloader_batch_size_per_gpu = (
-            cfg.multidistillation.global_batch_size + (distributed.get_world_size() - 1)
-        ) // distributed.get_world_size()
+        dataloader_batch_size_per_gpu = (cfg.multidistillation.global_batch_size + (distributed.get_world_size() - 1)) // distributed.get_world_size()
     else:
         local_batch_size = None  # will default to the standard local batch size matching the data batch size
         dataloader_batch_size_per_gpu = cfg.train.batch_size_per_gpu
@@ -305,11 +327,20 @@ def build_data_loader_from_cfg(
     )
     batch_size = dataloader_batch_size_per_gpu
     num_workers = cfg.train.num_workers
-    dataset_path = cfg.train.dataset_path
+
     dataset = make_dataset(
-        dataset_str=dataset_path,
+        dataset_str=cfg.train.dataset_path,
+        patch_size=cfg.train.s2_patch_size,
+        bands=cfg.train.s2_patch_size,
+        use_buildings=cfg.buildings.loss_weight > 0,
+        use_climate=cfg.climate.loss_weight > 0,
+        use_clouds=cfg.clouds.loss_weight > 0,
+        use_coords=cfg.coords.loss_weight > 0,
+        use_landcover=cfg.landcover.loss_weight > 0,
+        use_terrain=cfg.terrain.loss_weight > 0,
+        use_urbanization=cfg.urbanization.loss_weight > 0,
+        use_water=cfg.water.loss_weight > 0,
         transform=model.build_data_augmentation_dino(cfg),
-        target_transform=lambda _: (),
     )
 
     if isinstance(dataset, torch.utils.data.IterableDataset):
@@ -338,10 +369,14 @@ def build_multi_resolution_data_loader_from_cfg(
     seed=65537,
 ):
     global_crops_sizes = (
-        [cfg.crops.global_crops_size] if isinstance(cfg.crops.global_crops_size, int) else cfg.crops.global_crops_size
+        [cfg.crops.global_crops_size]
+        if isinstance(cfg.crops.global_crops_size, int)
+        else cfg.crops.global_crops_size
     )
     local_crops_sizes = (
-        [cfg.crops.local_crops_size] if isinstance(cfg.crops.local_crops_size, int) else cfg.crops.local_crops_size
+        [cfg.crops.local_crops_size]
+        if isinstance(cfg.crops.local_crops_size, int)
+        else cfg.crops.local_crops_size
     )
     gram_teacher_crops_sizes = (
         [cfg.crops.gram_teacher_crops_size]
@@ -385,8 +420,11 @@ def do_train(cfg, model, resume=False):
     ckpt_dir.mkdir(parents=True, exist_ok=True)
 
     model.train()
+
     # Optimizer
     optimizer = build_optimizer(cfg, model.get_params_groups())
+
+    # Scheduler
     (
         lr_schedule,
         wd_schedule,
@@ -394,11 +432,13 @@ def do_train(cfg, model, resume=False):
         teacher_temp_schedule,
         last_layer_lr_schedule,
     ) = build_schedulers(cfg)
+
     if cfg.multidistillation.enabled:
         register_dont_save_hooks(
             model,
             dont_save=[k for k, _ in model.state_dict().items() if k.startswith("teacher")],
         )
+
     model.init_weights()
     start_iter = 0
     if resume and (last_checkpoint_dir := find_latest_checkpoint(ckpt_dir)):
@@ -451,6 +491,7 @@ def do_train(cfg, model, resume=False):
         num_gram_updates = math.ceil((start_iter + 1 - cfg.gram.it_first_update) / cfg.gram.update_frequency)
         logger.info(f"Gram was updated {num_gram_updates} times before iteration {start_iter}")
     consecutive_nan_count = 0
+
     for data in metric_logger.log_every(
         data_loader,
         print_freq=10,
@@ -482,7 +523,7 @@ def do_train(cfg, model, resume=False):
 
         # Forward backward
         optimizer.zero_grad(set_to_none=True)
-        total_loss, metrics_dict = model.forward_backward(data, teacher_temp=teacher_temp, iteration=it)
+        total_loss, metrics_dict = model.forward_backward(data, teacher_temp=teacher_temp, iteration=it)    # TODO
 
         # Gradient clipping
         if cfg.optim.clip_grad:
@@ -505,8 +546,10 @@ def do_train(cfg, model, resume=False):
             group=distributed.get_process_subgroup(),
         )
         total_loss = total_loss_all_ranks.mean()
+
         metrics_values = torch.stack(
-            [torch.as_tensor(v, dtype=torch.float32, device=total_loss.device).detach() for v in metrics_dict.values()]
+            [torch.as_tensor(v, dtype=torch.float32, device=total_loss.device).detach()
+             for v in metrics_dict.values()]
         )
         torch.distributed.all_reduce(
             metrics_values,
@@ -514,6 +557,7 @@ def do_train(cfg, model, resume=False):
             group=distributed.get_process_subgroup(),
         )
         metrics_dict = dict(zip(metrics_dict.keys(), metrics_values))
+
         if total_loss_all_ranks.isnan().any():
             consecutive_nan_count += 1
             which_ranks = total_loss_all_ranks.isnan().nonzero().flatten().tolist()
@@ -587,6 +631,7 @@ def main(argv=None):
         args = get_args_parser().parse_args(argv[1:])
         args.output_dir = sys.argv[1]
     if args.multi_distillation:
+        # TODO CHECK LATER
         print("performing multidistillation run")
         cfg = setup_multidistillation(args)
         torch.distributed.barrier()
@@ -601,8 +646,8 @@ def main(argv=None):
             name="nan_logger",
         )
     meta_arch = {
-        "SSLMetaArch": SSLMetaArch,
-        "MultiDistillationMetaArch": MultiDistillationMetaArch,
+        "SSLMetaArch": SSLMetaArch,     # TODO: CONTINUE
+        "MultiDistillationMetaArch": MultiDistillationMetaArch,     # TODO: DO
     }.get(cfg.MODEL.META_ARCHITECTURE, None)
     if meta_arch is None:
         raise ValueError(f"Unknown MODEL.META_ARCHITECTURE {cfg.MODEL.META_ARCHITECTURE}")

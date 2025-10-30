@@ -30,8 +30,6 @@ class DataAugmentationDINO(object):
         patch_size=16,
         share_color_jitter=False,
         horizontal_flips=True,
-        mean=IMAGENET_DEFAULT_MEAN,
-        std=IMAGENET_DEFAULT_STD,
     ):
         self.global_crops_scale = global_crops_scale
         self.local_crops_scale = local_crops_scale
@@ -40,12 +38,10 @@ class DataAugmentationDINO(object):
         self.local_crops_size = local_crops_size
         self.gram_teacher_crops_size = gram_teacher_crops_size
         self.gram_teacher_no_distortions = gram_teacher_no_distortions
-        self.teacher_no_color_jitter = teacher_no_color_jitter
+        # self.teacher_no_color_jitter = teacher_no_color_jitter
         self.local_crops_subset_of_global_crops = local_crops_subset_of_global_crops
         self.patch_size = patch_size
-        self.share_color_jitter = share_color_jitter
-        self.mean = mean
-        self.std = std
+        # self.share_color_jitter = share_color_jitter
 
         logger.info("###################################")
         logger.info("Using data augmentation parameters:")
@@ -56,10 +52,10 @@ class DataAugmentationDINO(object):
         logger.info(f"local_crops_size: {local_crops_size}")
         logger.info(f"gram_crops_size: {gram_teacher_crops_size}")
         logger.info(f"gram_teacher_no_distortions: {gram_teacher_no_distortions}")
-        logger.info(f"teacher_no_color_jitter: {teacher_no_color_jitter}")
+        # logger.info(f"teacher_no_color_jitter: {teacher_no_color_jitter}")
         logger.info(f"local_crops_subset_of_global_crops: {local_crops_subset_of_global_crops}")
         logger.info(f"patch_size if local_crops_subset_of_global_crops: {patch_size}")
-        logger.info(f"share_color_jitter: {share_color_jitter}")
+        # logger.info(f"share_color_jitter: {share_color_jitter}")
         logger.info(f"horizontal flips: {horizontal_flips}")
         logger.info("###################################")
 
@@ -118,57 +114,20 @@ class DataAugmentationDINO(object):
             ]
         )
 
-        # color distortions / blurring
-        color_jittering = v2.Compose(
-            [
-                v2.RandomApply(
-                    [v2.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.2, hue=0.1)],
-                    p=0.8,
-                ),
-                v2.RandomGrayscale(p=0.2),
-            ]
-        )
-
         global_transfo1_extra = GaussianBlur(p=1.0)
-
-        global_transfo2_extra = v2.Compose(
-            [
-                GaussianBlur(p=0.1),
-                v2.RandomSolarize(threshold=128, p=0.2),
-            ]
-        )
-
+        global_transfo2_extra = GaussianBlur(p=0.1)
         local_transfo_extra = GaussianBlur(p=0.5)
 
         # normalization
-        self.normalize = v2.Compose(
-            [
-                v2.ToImage(),
-                v2.ToDtype(torch.float32, scale=True),
-                make_normalize_transform(mean=mean, std=std),
-            ]
-        )
+        self.normalize = v2.Compose([v2.ToImage(), v2.ToDtype(torch.float32)])
 
-        if self.share_color_jitter:
-            self.color_jittering = color_jittering
-            self.global_transfo1 = v2.Compose([resize_global, global_transfo1_extra, self.normalize])
-            self.global_transfo2 = v2.Compose([resize_global, global_transfo2_extra, self.normalize])
-            self.local_transfo = v2.Compose([local_transfo_extra, self.normalize])
-        else:
-            self.global_transfo1 = v2.Compose(
-                [resize_global, color_jittering, global_transfo1_extra, self.normalize]
-            )
-            self.global_transfo2 = v2.Compose(
-                [resize_global, color_jittering, global_transfo2_extra, self.normalize]
-            )
-            self.local_transfo = v2.Compose([color_jittering, local_transfo_extra, self.normalize])
+        self.global_transfo1 = v2.Compose([resize_global, global_transfo1_extra, self.normalize])
+        self.global_transfo2 = v2.Compose([resize_global, global_transfo2_extra, self.normalize])
+        self.local_transfo = v2.Compose([local_transfo_extra, self.normalize])
 
     def __call__(self, image):
         output = {}
         output["weak_flag"] = True  # some residual from mugs
-
-        if self.share_color_jitter:
-            image = self.color_jittering(image)
 
         # global crops:
         im1_base = self.geometric_augmentation_global(image)
@@ -180,15 +139,7 @@ class DataAugmentationDINO(object):
         global_crop_2 = self.resize_global_post_transf(global_crop_2_transf)
 
         output["global_crops"] = [global_crop_1, global_crop_2]
-
-        # global crops for teacher:
-        if self.teacher_no_color_jitter:
-            output["global_crops_teacher"] = [
-                self.normalize(im1_base),
-                self.normalize(im2_base),
-            ]
-        else:
-            output["global_crops_teacher"] = [global_crop_1, global_crop_2]
+        output["global_crops_teacher"] = [global_crop_1, global_crop_2]
 
         if self.gram_teacher_crops_size is not None:
             # crops for gram teacher:

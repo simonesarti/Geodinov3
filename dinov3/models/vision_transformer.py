@@ -329,6 +329,13 @@ class DinoVisionTransformer(nn.Module):
             return self.head(ret["x_norm_clstoken"])
 
 
+class GeoDinoVisionTransformer(DinoVisionTransformer):
+    def __init__(self, *args, **kwargs):
+        # Force in_chans=10 regardless of user input
+        kwargs['in_chans'] = 10
+        super().__init__(*args, **kwargs)
+
+
 def vit_small(patch_size=16, **kwargs):
     model = DinoVisionTransformer(
         patch_size=patch_size,
@@ -406,6 +413,93 @@ def vit_giant2(patch_size=16, **kwargs):
 
 def vit_7b(patch_size=16, **kwargs):
     model = DinoVisionTransformer(
+        patch_size=patch_size,
+        embed_dim=4096,
+        depth=40,
+        num_heads=32,
+        ffn_ratio=3,
+        **kwargs,
+    )
+    return model
+
+
+def geovit_small(patch_size=16, **kwargs):
+    model = GeoDinoVisionTransformer(
+        patch_size=patch_size,
+        embed_dim=384,
+        depth=12,
+        num_heads=6,
+        ffn_ratio=4,
+        **kwargs,
+    )
+    return model
+
+
+def geovit_base(patch_size=16, **kwargs):
+    model = GeoDinoVisionTransformer(
+        patch_size=patch_size,
+        embed_dim=768,
+        depth=12,
+        num_heads=12,
+        ffn_ratio=4,
+        **kwargs,
+    )
+    return model
+
+
+def geovit_large(patch_size=16, **kwargs):
+    model = GeoDinoVisionTransformer(
+        patch_size=patch_size,
+        embed_dim=1024,
+        depth=24,
+        num_heads=16,
+        ffn_ratio=4,
+        **kwargs,
+    )
+    return model
+
+
+def geovit_so400m(patch_size=16, **kwargs):
+    model = GeoDinoVisionTransformer(
+        patch_size=patch_size,
+        embed_dim=1152,
+        depth=27,
+        num_heads=18,
+        ffn_ratio=3.777777778,
+        **kwargs,
+    )
+    return model
+
+
+def geovit_huge2(patch_size=16, **kwargs):
+    model = GeoDinoVisionTransformer(
+        patch_size=patch_size,
+        embed_dim=1280,
+        depth=32,
+        num_heads=20,
+        ffn_ratio=4,
+        **kwargs,
+    )
+    return model
+
+
+def geovit_giant2(patch_size=16, **kwargs):
+    """
+    Close to ViT-giant, with embed-dim 1536 and 24 heads => embed-dim per head 64
+    """
+    model = GeoDinoVisionTransformer(
+        patch_size=patch_size,
+        embed_dim=1536,
+        depth=40,
+        num_heads=24,
+        ffn_ratio=4,
+        **kwargs,
+    )
+    return model
+
+
+def geovit_7b(patch_size=16, **kwargs):
+    model = GeoDinoVisionTransformer(
         patch_size=patch_size,
         embed_dim=4096,
         depth=40,

@@ -12,6 +12,7 @@ from torch.utils.data import Sampler
 
 from .datasets import ADE20K, CocoCaptions, ImageNet, ImageNet22k
 from .samplers import EpochSampler, InfiniteSampler, ShardedInfiniteSampler
+from .preprocessed_majortom_s2l2a import MajorTOM
 
 logger = logging.getLogger("dinov3")
 
@@ -77,36 +78,50 @@ def _parse_dataset_str(dataset_str: str):
 def make_dataset(
     *,
     dataset_str: str,
+    patch_size: int,
+    bands: list[str],
+    use_buildings: bool,
+    use_climate: bool,
+    use_clouds: bool,
+    use_coords: bool,
+    use_landcover: bool,
+    use_terrain: bool,
+    use_urbanization: bool,
+    use_water: bool,
     transform: Optional[Callable] = None,
-    target_transform: Optional[Callable] = None,
-    transforms: Optional[Callable] = None,
 ):
     """
     Creates a dataset with the specified parameters.
 
     Args:
-        dataset_str: A dataset string description (e.g. ImageNet:split=TRAIN).
+        dataset_str: A dataset string description (e.g. MajorTOM).
+        patch_size: the size of the subpatch to extract from each tif
+        bands: the list of bands to use
         transform: A transform to apply to images.
-        target_transform: A transform to apply to targets.
-        transforms: A transform to apply to both images and targets.
 
     Returns:
         The created dataset.
     """
     logger.info(f'using dataset: "{dataset_str}"')
 
-    class_, kwargs = _parse_dataset_str(dataset_str)
-    dataset = class_(transform=transform, target_transform=target_transform, transforms=transforms, **kwargs)
+    if dataset_str not in ["TinyTOM", "FastTOM", "MajorTOM"]:
+        raise ValueError(f'Unsupported dataset "{dataset_str}"')
 
-    logger.info(f"# of dataset samples: {len(dataset):,d}")
-
-    # Aggregated datasets do not expose (yet) these attributes, so add them.
-    if not hasattr(dataset, "transform"):
-        dataset.transform = transform
-    if not hasattr(dataset, "target_transform"):
-        dataset.target_transform = target_transform
-    if not hasattr(dataset, "transforms"):
-        dataset.transforms = transforms
+    dataset = MajorTOM(
+        dataset_path=f"/archive/group/major-tom/{dataset_str}/",
+        patch_size=patch_size,
+        data_transform=transform,
+        s2_bands=tuple(bands),
+        use_buildings=use_buildings,
+        use_climate=use_climate,
+        use_clouds=use_clouds,
+        use_coords=use_coords,
+        use_landcover=use_landcover,
+        use_terrain=use_terrain,
+        use_urbanization=use_urbanization,
+        use_water=use_water,
+        get_placeholder_unused_band=False,
+    )
 
     return dataset
 
@@ -228,6 +243,7 @@ def make_data_loader(
         persistent_workers=persistent_workers,
         collate_fn=collate_fn,
         worker_init_fn=worker_init_fn,
+        prefetch_factor=4 if num_workers > 0 else None
     )
 
     try:

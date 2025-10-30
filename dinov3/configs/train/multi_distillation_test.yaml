@@ -19,7 +19,19 @@ distillation:  # teacher
   full_cfg_path: dinov3/configs/train/vitl_im1k_lin834.yaml
   checkpoint_path: ignore
 train:
-  dataset_path: ImageNet:split=TRAIN
+  dataset_path: MajorTOM
+  s2_patch_size: 256
+  s2_bands:
+    - "B02"
+    - "B03"
+    - "B04"
+    - "B05"
+    - "B06"
+    - "B07"
+    - "B08"
+    - "B8A"
+    - "B11"
+    - "B12"
   cache_dataset: false
   centering: "sinkhorn_knopp"
   compile: true

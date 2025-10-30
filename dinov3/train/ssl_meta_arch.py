@@ -22,6 +22,7 @@ from dinov3.models import build_model_from_cfg
 from dinov3.train.cosine_lr_scheduler import linear_warmup_cosine_decay
 from dinov3.train.param_groups import fuse_params_groups, get_params_groups_with_decay_fsdp
 from dinov3.utils import count_parameters
+from dinov3.loss.additional_losses import *
 
 logger = logging.getLogger("dinov3")
 
@@ -125,6 +126,8 @@ class SSLMetaArch(nn.Module):
         teacher_model_dict["ibot_head"] = ibot_head_class()
         self.ibot_patch_loss = iBOTPatchLoss(cfg.ibot.head_n_prototypes)
 
+        self._create_additional_heads(embed_dim, cfg, student_model_dict, teacher_model_dict)
+
         # Build student and teacher models
         self.student = nn.ModuleDict(student_model_dict)
         self.teacher = nn.ModuleDict(teacher_model_dict)
@@ -132,7 +135,7 @@ class SSLMetaArch(nn.Module):
         logger.info(f"Student and Teacher are built: they are both {cfg.student.arch} network.")
 
         if cfg.distillation.enabled:
-            self._setup_distillation()
+            self._setup_distillation()  # todo
         # No grad is needed for these two
         self.teacher.requires_grad_(False)
         self.model_ema.requires_grad_(False)
@@ -146,7 +149,7 @@ class SSLMetaArch(nn.Module):
         self.dino_koleo_loss_weight = self.cfg.dino.koleo_loss_weight
         self.ibot_loss_weight = self.cfg.ibot.loss_weight
 
-        # Local loss reweighting
+        # Local loss reweighing
         if self.cfg.dino.reweight_dino_local_loss:
             iter_per_epoch = cfg.train.OFFICIAL_EPOCH_LENGTH
             total_iterations = iter_per_epoch * cfg.optim.epochs
@@ -217,7 +220,8 @@ class SSLMetaArch(nn.Module):
 
             if self.gram_ema_teacher and self.gram_ckpt is not None:
                 raise ValueError(
-                    "Cannot use both `gram.ema_teacher` and `gram.ckpt` at the same time. Please set one of them to False."
+                    "Cannot use both `gram.ema_teacher` and `gram.ckpt` at the same time. "
+                    "Please set one of them to False."
                 )
             if self.gram_ckpt is None and self.gram_it_load_ema_teacher < 0:
                 raise ValueError(
@@ -260,6 +264,206 @@ class SSLMetaArch(nn.Module):
                 f"OPTIONS -- global crops GRAM teacher resize antialias: {cfg.gram.global_teacher_resize_antialias}"
             )
 
+    def _create_additional_heads(self, embed_dim, cfg, student_model_dict, teacher_model_dict):
+
+        # =============================================================================
+
+        # ADDITIONAL HEADS ARE NOT USED TO COMPUTE LOSSES FOR THE TEACHER,
+        # BUT ARE NEEDED BECAUSE THE TWO ARCHITECTURES (TEACHER/STUDENT) MUST MATCH
+
+        # --------------- BUILDINGS HEAD & LOSS ----------------------------------------
+
+        logger.info("OPTIONS -- BUILDINGS")
+        self.buildings_loss_weight = cfg.buildings.loss_weight
+        if self.buildings_loss_weight > 0:
+            logger.info(f"OPTIONS -- BUILDINGS -- loss_weight: {cfg.buildings.loss_weight}")
+            logger.info(f"OPTIONS -- BUILDINGS -- head_n_prototypes: {cfg.buildings.head_n_prototypes}")
+            logger.info(f"OPTIONS -- BUILDINGS -- head_bottleneck_dim: {cfg.buildings.head_bottleneck_dim}")
+            logger.info(f"OPTIONS -- BUILDINGS -- head_hidden_dim: {cfg.buildings.head_hidden_dim}")
+            buildings_head = partial(
+                DINOHead,
+                in_dim=embed_dim,
+                out_dim=cfg.buildings.head_n_prototypes,
+                hidden_dim=cfg.buildings.head_hidden_dim,
+                bottleneck_dim=cfg.buildings.head_bottleneck_dim,
+                nlayers=cfg.buildings.head_nlayers,
+            )
+            student_model_dict["buildings_head"] = buildings_head()
+            teacher_model_dict["buildings_head"] = buildings_head()
+            self.buildings_loss = BuildingsLoss()
+
+        else:
+            logger.info("OPTIONS -- BUILDINGS -- not using BUILDINGS")
+
+        # --------------- CLIMATE HEAD & LOSS ----------------------------------------
+
+        logger.info("OPTIONS -- CLIMATE")
+        self.climate_loss_weight = cfg.climate.loss_weight
+        if self.climate_loss_weight > 0:
+            logger.info(f"OPTIONS -- CLIMATE -- loss_weight: {cfg.climate.loss_weight}")
+            logger.info(f"OPTIONS -- CLIMATE -- head_n_prototypes: {cfg.climate.head_n_prototypes}")
+            logger.info(f"OPTIONS -- CLIMATE -- head_bottleneck_dim: {cfg.climate.head_bottleneck_dim}")
+            logger.info(f"OPTIONS -- CLIMATE -- head_hidden_dim: {cfg.climate.head_hidden_dim}")
+            climate_head = partial(
+                DINOHead,
+                in_dim=embed_dim,
+                out_dim=cfg.climate.head_n_prototypes,
+                hidden_dim=cfg.climate.head_hidden_dim,
+                bottleneck_dim=cfg.climate.head_bottleneck_dim,
+                nlayers=cfg.climate.head_nlayers,
+            )
+            student_model_dict["climate_head"] = climate_head()
+            teacher_model_dict["climate_head"] = climate_head()
+            self.climate_loss = ClimateLoss()
+
+        else:
+            logger.info("OPTIONS -- CLIMATE -- not using CLIMATE")
+
+        # --------------- CLOUDS HEAD & LOSS ----------------------------------------
+
+        logger.info("OPTIONS -- CLOUDS")
+        self.clouds_loss_weight = cfg.clouds.loss_weight
+        if self.clouds_loss_weight > 0:
+            logger.info(f"OPTIONS -- CLOUDS -- loss_weight: {cfg.clouds.loss_weight}")
+            logger.info(f"OPTIONS -- CLOUDS -- head_n_prototypes: {cfg.clouds.head_n_prototypes}")
+            logger.info(f"OPTIONS -- CLOUDS -- head_bottleneck_dim: {cfg.clouds.head_bottleneck_dim}")
+            logger.info(f"OPTIONS -- CLOUDS -- head_hidden_dim: {cfg.clouds.head_hidden_dim}")
+            clouds_head = partial(
+                DINOHead,
+                in_dim=embed_dim,
+                out_dim=cfg.clouds.head_n_prototypes,
+                hidden_dim=cfg.clouds.head_hidden_dim,
+                bottleneck_dim=cfg.clouds.head_bottleneck_dim,
+                nlayers=cfg.clouds.head_nlayers,
+            )
+            student_model_dict["clouds_head"] = clouds_head()
+            teacher_model_dict["clouds_head"] = clouds_head()
+            self.clouds_loss = CloudsLoss()
+
+        else:
+            logger.info("OPTIONS -- CLOUDS -- not using CLOUDS")
+
+        # --------------- COORDS HEAD & LOSS ----------------------------------------
+
+        logger.info("OPTIONS -- COORDS")
+        self.coords_loss_weight = cfg.coords.loss_weight
+        if self.coords_loss_weight > 0:
+            logger.info(f"OPTIONS -- COORDS -- loss_weight: {cfg.coords.loss_weight}")
+            logger.info(f"OPTIONS -- COORDS -- head_n_prototypes: {cfg.coords.head_n_prototypes}")
+            logger.info(f"OPTIONS -- COORDS -- head_bottleneck_dim: {cfg.coords.head_bottleneck_dim}")
+            logger.info(f"OPTIONS -- COORDS -- head_hidden_dim: {cfg.coords.head_hidden_dim}")
+            coords_head = partial(
+                DINOHead,
+                in_dim=embed_dim,
+                out_dim=cfg.coords.head_n_prototypes,
+                hidden_dim=cfg.coords.head_hidden_dim,
+                bottleneck_dim=cfg.coords.head_bottleneck_dim,
+                nlayers=cfg.coords.head_nlayers,
+            )
+            student_model_dict["coords_head"] = coords_head()
+            teacher_model_dict["coords_head"] = coords_head()
+            self.coords_loss = CoordsLoss()
+
+        else:
+            logger.info("OPTIONS -- COORDS -- not using COORDS")
+
+        # --------------- LANDCOVER HEAD & LOSS ----------------------------------------
+
+        logger.info("OPTIONS -- LANDCOVER")
+        self.landcover_loss_weight = cfg.landcover.loss_weight
+        if self.landcover_loss_weight > 0:
+            logger.info(f"OPTIONS -- LANDCOVER -- loss_weight: {cfg.landcover.loss_weight}")
+            logger.info(f"OPTIONS -- LANDCOVER -- head_n_prototypes: {cfg.landcover.head_n_prototypes}")
+            logger.info(f"OPTIONS -- LANDCOVER -- head_bottleneck_dim: {cfg.landcover.head_bottleneck_dim}")
+            logger.info(f"OPTIONS -- LANDCOVER -- head_hidden_dim: {cfg.landcover.head_hidden_dim}")
+            landcover_head = partial(
+                DINOHead,
+                in_dim=embed_dim,
+                out_dim=cfg.landcover.head_n_prototypes,
+                hidden_dim=cfg.landcover.head_hidden_dim,
+                bottleneck_dim=cfg.landcover.head_bottleneck_dim,
+                nlayers=cfg.landcover.head_nlayers,
+            )
+            student_model_dict["landcover_head"] = landcover_head()
+            teacher_model_dict["landcover_head"] = landcover_head()
+            self.landcover_loss = LandcoverLoss()
+
+        else:
+            logger.info("OPTIONS -- LANDCOVER -- not using LANDCOVER")
+
+        # --------------- TERRAIN HEAD & LOSS ----------------------------------------
+
+        logger.info("OPTIONS -- TERRAIN")
+        self.terrain_loss_weight = cfg.terrain.loss_weight
+        if self.terrain_loss_weight > 0:
+            logger.info(f"OPTIONS -- TERRAIN -- loss_weight: {cfg.terrain.loss_weight}")
+            logger.info(f"OPTIONS -- TERRAIN -- head_n_prototypes: {cfg.terrain.head_n_prototypes}")
+            logger.info(f"OPTIONS -- TERRAIN -- head_bottleneck_dim: {cfg.terrain.head_bottleneck_dim}")
+            logger.info(f"OPTIONS -- TERRAIN -- head_hidden_dim: {cfg.terrain.head_hidden_dim}")
+            terrain_head = partial(
+                DINOHead,
+                in_dim=embed_dim,
+                out_dim=cfg.terrain.head_n_prototypes,
+                hidden_dim=cfg.terrain.head_hidden_dim,
+                bottleneck_dim=cfg.terrain.head_bottleneck_dim,
+                nlayers=cfg.terrain.head_nlayers,
+            )
+            student_model_dict["terrain_head"] = terrain_head()
+            teacher_model_dict["terrain_head"] = terrain_head()
+            self.terrain_loss = TerrainLoss()
+
+        else:
+            logger.info("OPTIONS -- TERRAIN -- not using TERRAIN")
+
+        # --------------- URBANIZATION HEAD & LOSS ----------------------------------------
+
+        logger.info("OPTIONS -- URBANIZATION")
+        self.urbanization_loss_weight = cfg.urbanization.loss_weight
+        if self.urbanization_loss_weight > 0:
+            logger.info(f"OPTIONS -- URBANIZATION -- loss_weight: {cfg.urbanization.loss_weight}")
+            logger.info(f"OPTIONS -- URBANIZATION -- head_n_prototypes: {cfg.urbanization.head_n_prototypes}")
+            logger.info(f"OPTIONS -- URBANIZATION -- head_bottleneck_dim: {cfg.urbanization.head_bottleneck_dim}")
+            logger.info(f"OPTIONS -- URBANIZATION -- head_hidden_dim: {cfg.urbanization.head_hidden_dim}")
+            urbanization_head = partial(
+                DINOHead,
+                in_dim=embed_dim,
+                out_dim=cfg.urbanization.head_n_prototypes,
+                hidden_dim=cfg.urbanization.head_hidden_dim,
+                bottleneck_dim=cfg.urbanization.head_bottleneck_dim,
+                nlayers=cfg.urbanization.head_nlayers,
+            )
+            student_model_dict["urbanization_head"] = urbanization_head()
+            teacher_model_dict["urbanization_head"] = urbanization_head()
+            self.urbanization_loss = UrbanizationLoss()
+
+        else:
+            logger.info("OPTIONS -- URBANIZATION -- not using URBANIZATION")
+
+        # --------------- WATER HEAD & LOSS ----------------------------------------
+
+        logger.info("OPTIONS -- WATER")
+        self.water_loss_weight = cfg.water.loss_weight
+        if self.water_loss_weight > 0:
+            logger.info(f"OPTIONS -- WATER -- loss_weight: {cfg.water.loss_weight}")
+            logger.info(f"OPTIONS -- WATER -- head_n_prototypes: {cfg.water.head_n_prototypes}")
+            logger.info(f"OPTIONS -- WATER -- head_bottleneck_dim: {cfg.water.head_bottleneck_dim}")
+            logger.info(f"OPTIONS -- WATER -- head_hidden_dim: {cfg.water.head_hidden_dim}")
+            water_head = partial(
+                DINOHead,
+                in_dim=embed_dim,
+                out_dim=cfg.water.head_n_prototypes,
+                hidden_dim=cfg.water.head_hidden_dim,
+                bottleneck_dim=cfg.water.head_bottleneck_dim,
+                nlayers=cfg.water.head_nlayers,
+            )
+            student_model_dict["water_head"] = water_head()
+            teacher_model_dict["water_head"] = water_head()
+            self.water_loss = WaterLoss()
+
+        else:
+            logger.info("OPTIONS -- WATER -- not using WATER")
+
+    # todo
     def _setup_distillation(self):
         logger.info(f"Performing distillation from {self.cfg.distillation.full_cfg_path}")
 
@@ -296,10 +500,45 @@ class SSLMetaArch(nn.Module):
     def init_weights(self) -> None:
         # All weights are set to `nan` to ensure we initialize everything explicitly
         self.student.backbone.init_weights()
+
         self.student.dino_head.init_weights()
-        self.student.ibot_head.init_weights()
         self.dino_loss.init_weights()
+
+        self.student.ibot_head.init_weights()
         self.ibot_patch_loss.init_weights()
+
+        if self.buildings_loss_weight > 0:
+            self.student.buildings_head.init_weights()
+            # buildings loss is not parametrized
+
+        if self.climate_loss_weight > 0:
+            self.student.climate_head.init_weights()
+            # climate loss is not parametrized
+
+        if self.clouds_loss_weight > 0:
+            self.student.clouds_head.init_weights()
+            # clouds loss is not parametrized
+
+        if self.coords_loss_weight > 0:
+            self.student.coords_head.init_weights()
+            # coords loss is not parametrized
+
+        if self.landcover_loss_weight > 0:
+            self.student.landcover_head.init_weights()
+            # landcover loss is not parametrized
+
+        if self.terrain_loss_weight > 0:
+            self.student.terrain_head.init_weights()
+            # terrain loss is not parametrized
+
+        if self.urbanization_loss_weight > 0:
+            self.student.urbanization_head.init_weights()
+            # urbanization loss is not parametrized
+
+        if self.water_loss_weight > 0:
+            self.student.water_head.init_weights()
+            # water loss is not parametrized
+
         self.model_ema.load_state_dict(self.student.state_dict())
         if self.has_gram_teacher:
             if self.gram_ckpt is not None:
@@ -309,9 +548,17 @@ class SSLMetaArch(nn.Module):
                     self.gram_ckpt,
                     skip_load_keys=[
                         "dino_head",
-                        "ibot_head",
                         "dino_loss.center",
+                        "ibot_head",
                         "ibot_patch_loss.center",
+                        "buildings_head",
+                        "climate_head",
+                        "clouds_head",
+                        "coords_head",
+                        "landcover_head",
+                        "terrain_head",
+                        "urbanization_head",
+                        "water_head",
                     ],
                     keys_not_sharded=["backbone.rope_embed.periods", "qkv.bias_mask"],
                     process_group=distributed.get_default_process_group(),
@@ -343,8 +590,34 @@ class SSLMetaArch(nn.Module):
             else:
                 logger.info("Init teacher to distil from, used for testing purpose only")
                 self.teacher.backbone.init_weights()
+
                 self.teacher.dino_head.init_weights()
                 self.teacher.ibot_head.init_weights()
+
+                if self.buildings_loss_weight > 0:
+                    self.student.buildings_head.init_weights()
+
+                if self.climate_loss_weight > 0:
+                    self.student.climate_head.init_weights()
+
+                if self.clouds_loss_weight > 0:
+                    self.student.clouds_head.init_weights()
+
+                if self.coords_loss_weight > 0:
+                    self.student.coords_head.init_weights()
+
+                if self.landcover_loss_weight > 0:
+                    self.student.landcover_head.init_weights()
+
+                if self.terrain_loss_weight > 0:
+                    self.student.terrain_head.init_weights()
+
+                if self.urbanization_loss_weight > 0:
+                    self.student.urbanization_head.init_weights()
+
+                if self.water_loss_weight > 0:
+                    self.student.water_head.init_weights()
+
             logger.info(f"Performing distillation from: {self.teacher}")
 
     def forward_backward(
@@ -367,6 +640,8 @@ class SSLMetaArch(nn.Module):
         mask_indices_list = data["mask_indices_list"].cuda(non_blocking=True)
         masks_weight = data["masks_weight"].cuda(non_blocking=True)
         n_masked_patches_tensor = data["n_masked_patches"].cuda(non_blocking=True)
+
+        labels = {k: v.cuda(non_blocking=True) for k, v in data["labels"].items()} if data["labels"] is not None else None
 
         if self.has_gram_teacher:
             assert "collated_gram_teacher_crops" in data, (
@@ -416,6 +691,7 @@ class SSLMetaArch(nn.Module):
             mask_indices_list=mask_indices_list,
             masks_weight=masks_weight,
             iteration=iteration,
+            labels=labels,
         )
 
         self.backprop_loss(loss_accumulator)
@@ -550,31 +826,195 @@ class SSLMetaArch(nn.Module):
         global_masked_patch_after_head = self.student.ibot_head(masked_patches_pre_head)
 
         # DINO head on CLS tokens (all in one pass)
-        buffer = [
+        buffer_gl = [
             g_cls,  # [n_global_crops * B, D]
             l_cls,  # [n_local_crops * B, D]
         ]
-        sizes = [x.shape[0] for x in buffer]
-        buffer = torch.cat(buffer, dim=0)  # [n_global_crops * B + n_local_crops * B, D]
-        buffer = self.student.dino_head(buffer)  # [n_global_crops * B + n_local_crops * B, K]
-        buffer = torch.split_with_sizes(buffer, sizes, dim=0)
+        sizes = [x.shape[0] for x in buffer_gl]
+        buffer_gl = torch.cat(buffer_gl, dim=0)  # [n_global_crops * B + n_local_crops * B, D]
+
+        buffer_dino = self.student.dino_head(buffer_gl)  # [n_global_crops * B + n_local_crops * B, K]
+        buffer_dino = torch.split_with_sizes(buffer_dino, sizes, dim=0)
 
         global_out = {
             "cls_pre_head": g_cls.unflatten(0, [n_global_crops, B]),  # [n_global_crops, B, D]
             "reg_pre_head": g_reg.unflatten(0, [n_global_crops, B]),  # [n_global_crops, B, R, D]
             "patch_pre_head": g_patch.unflatten(0, [n_global_crops, B]),  # [n_global_crops, B, P, D]
-            "cls_after_head": buffer[0].unflatten(0, [n_global_crops, B]),  # [n_global_crops, B, K],
+            "cls_after_head": buffer_dino[0].unflatten(0, [n_global_crops, B]),  # [n_global_crops, B, K],
             "masked_patch_after_head": global_masked_patch_after_head,  # [n_masked_patches, K]
             "masked_patch_pre_head": masked_patches_pre_head,  # [n_masked_patches, D]
-        }
+            }
+
         local_out = {
             "cls_pre_head": l_cls.unflatten(0, [n_local_crops, B]),  # [n_local_crops, B, D]
             "reg_pre_head": l_reg.unflatten(0, [n_local_crops, B]),  # [n_local_crops, B, R, D]
             "patch_pre_head": l_patch.unflatten(0, [n_local_crops, B]),  # [n_local_crops, B, P, D]
-            "cls_after_head": buffer[1].unflatten(0, [n_local_crops, B]),  # [n_local_crops, B, K],
+            "cls_after_head": buffer_dino[1].unflatten(0, [n_local_crops, B]),  # [n_local_crops, B, K],
         }
 
+        global_additional_out = {}
+        local_additional_out = {}
+
+        if self.buildings_loss_weight > 0:
+            buffer_buildings = self.student.buildings_head(buffer_gl)
+            buffer_buildings = torch.split_with_sizes(buffer_buildings, sizes, dim=0)   # [n_global_crops * B + n_local_crops * B, D]
+            global_additional_out["cls_after_buildings_head"] = buffer_buildings[0].unflatten(0, [n_global_crops, B]),  # [n_global_crops, B, K],
+            local_additional_out["cls_after_buildings_head"] = buffer_buildings[1].unflatten(0, [n_local_crops, B]),  # [n_local_crops, B, K],
+        if self.climate_loss_weight > 0:
+            buffer_climate = self.student.climate_head(buffer_gl)
+            buffer_climate = torch.split_with_sizes(buffer_climate, sizes, dim=0)   # [n_global_crops * B + n_local_crops * B, D]
+            global_additional_out["cls_after_climate_head"] = buffer_climate[0].unflatten(0, [n_global_crops, B]),  # [n_global_crops, B, K],
+            local_additional_out["cls_after_climate_head"] = buffer_climate[1].unflatten(0, [n_local_crops, B]),  # [n_local_crops, B, K],
+        if self.clouds_loss_weight > 0:
+            buffer_clouds = self.student.clouds_head(buffer_gl)
+            buffer_clouds = torch.split_with_sizes(buffer_clouds, sizes, dim=0)     # [n_global_crops * B + n_local_crops * B, D]
+            global_additional_out["cls_after_clouds_head"] = buffer_clouds[0].unflatten(0, [n_global_crops, B]),  # [n_global_crops, B, K],
+            local_additional_out["cls_after_clouds_head"] = buffer_clouds[1].unflatten(0, [n_local_crops, B]),  # [n_local_crops, B, K],
+        if self.coords_loss_weight > 0:
+            buffer_coords =self.student.coords_head(buffer_gl)
+            buffer_coords = torch.split_with_sizes(buffer_coords, sizes, dim=0)     # [n_global_crops * B + n_local_crops * B, D]
+            global_additional_out["cls_after_coords_head"] = buffer_coords[0].unflatten(0, [n_global_crops, B]),  # [n_global_crops, B, K],
+            local_additional_out["cls_after_coords_head"] = buffer_coords[1].unflatten(0, [n_local_crops, B]),  # [n_local_crops, B, K],
+        if self.landcover_loss_weight > 0:
+            buffer_landcover = self.student.landcover_head(buffer_gl)
+            buffer_landcover = torch.split_with_sizes(buffer_landcover, sizes, dim=0)   # [n_global_crops * B + n_local_crops * B, D]
+            global_additional_out["cls_after_landcover_head"] = buffer_landcover[0].unflatten(0, [n_global_crops, B]),  # [n_global_crops, B, K],
+            local_additional_out["cls_after_landcover_head"] = buffer_landcover[1].unflatten(0, [n_local_crops, B]),  # [n_local_crops, B, K],
+        if self.terrain_loss_weight > 0:
+            buffer_terrain =self.student.terrain_head(buffer_gl)
+            buffer_terrain = torch.split_with_sizes(buffer_terrain, sizes, dim=0)   # [n_global_crops * B + n_local_crops * B, D]
+            global_additional_out["cls_after_terrain_head"] = buffer_terrain[0].unflatten(0, [n_global_crops, B]),  # [n_global_crops, B, K],
+            local_additional_out["cls_after_terrain_head"] = buffer_terrain[1].unflatten(0, [n_local_crops, B]),  # [n_local_crops, B, K],
+        if self.urbanization_loss_weight > 0:
+            buffer_urbanization =self.student.urbanization_head(buffer_gl)
+            buffer_urbanization = torch.split_with_sizes(buffer_urbanization, sizes, dim=0)     # [n_global_crops * B + n_local_crops * B, D]
+            global_additional_out["cls_after_urbanization_head"] = buffer_urbanization[0].unflatten(0, [n_global_crops, B]),  # [n_global_crops, B, K],
+            local_additional_out["cls_after_urbanization_head"] = buffer_urbanization[1].unflatten(0, [n_local_crops, B]),  # [n_local_crops, B, K],
+        if self.water_loss_weight > 0:
+            buffer_water =self.student.water_head(buffer_gl)
+            buffer_water = torch.split_with_sizes(buffer_water, sizes, dim=0)   # [n_global_crops * B + n_local_crops * B, D]
+            global_additional_out["cls_after_water_head"] = buffer_water[0].unflatten(0, [n_global_crops, B]),  # [n_global_crops, B, K],
+            local_additional_out["cls_after_water_head"] = buffer_water[1].unflatten(0, [n_local_crops, B]),  # [n_local_crops, B, K],
+
+        global_out.update(global_additional_out)
+        local_out.update(local_additional_out)
+
         return global_out, local_out
+
+    def _compute_additional_losses(
+            self,
+            loss_dict,
+            loss_accumulator,
+            student_global,
+            student_local,
+            labels,
+    ):
+
+        # buildings loss
+        if self.buildings_loss_weight > 0:
+            buildings_loss = self.buildings_loss(
+                pred=torch.cat([
+                    student_global['cls_after_buildings_head'].flatten(0, 1),
+                    student_local['cls_after_buildings_head'].flatten(0, 1),
+                ], dim=0),  # [n_global_crops * B + n_local_crops * B, D]
+                labels=labels["buildings"],
+                weights=labels["buildings_weight"],
+            )
+            loss_dict["buildings_loss"] = buildings_loss
+            loss_accumulator += self.buildings_loss_weight * buildings_loss
+
+        # climate loss
+        if self.climate_loss_weight > 0:
+            climate_loss = self.climate_loss(
+                pred=torch.cat([
+                    student_global['cls_after_climate_head'].flatten(0, 1),
+                    student_local['cls_after_climate_head'].flatten(0, 1),
+                ], dim=0),  # [n_global_crops * B + n_local_crops * B, D]
+                labels=labels["climate"],
+                weights=labels["climate_weight"],
+            )
+            loss_dict["climate_loss"] = climate_loss
+            loss_accumulator += self.climate_loss_weight * climate_loss
+
+        # clouds loss
+        if self.clouds_loss_weight > 0:
+            clouds_loss = self.clouds_loss(
+                pred=torch.cat([
+                    student_global['cls_after_clouds_head'].flatten(0, 1),
+                    student_local['cls_after_clouds_head'].flatten(0, 1),
+                ], dim=0),  # [n_global_crops * B + n_local_crops * B, D]
+                labels=labels["clouds"],
+                weights=labels["clouds_weight"],
+            )
+            loss_dict["clouds_loss"] = clouds_loss
+            loss_accumulator += self.clouds_loss_weight * clouds_loss
+
+        # coords loss
+        if self.coords_loss_weight > 0:
+            coords_loss = self.coords_loss(
+                pred=torch.cat([
+                    student_global['cls_after_coords_head'].flatten(0, 1),
+                    student_local['cls_after_coords_head'].flatten(0, 1),
+                ], dim=0),  # [n_global_crops * B + n_local_crops * B, D]
+                labels=labels["coords"],
+                weights=labels["coords_weight"],
+            )
+            loss_dict["coords_loss"] = coords_loss
+            loss_accumulator += self.coords_loss_weight * coords_loss
+
+        # landcover loss
+        if self.landcover_loss_weight > 0:
+            landcover_loss = self.landcover_loss(
+                pred=torch.cat([
+                    student_global['cls_after_landcover_head'].flatten(0, 1),
+                    student_local['cls_after_landcover_head'].flatten(0, 1),
+                ], dim=0),  # [n_global_crops * B + n_local_crops * B, D]
+                labels=labels["landcover"],
+                weights=labels["landcover_weight"],
+            )
+            loss_dict["landcover_loss"] = landcover_loss
+            loss_accumulator += self.landcover_loss_weight * landcover_loss
+
+        # terrain loss
+        if self.terrain_loss_weight > 0:
+            terrain_loss = self.terrain_loss(
+                pred=torch.cat([
+                    student_global['cls_after_terrain_head'].flatten(0, 1),
+                    student_local['cls_after_terrain_head'].flatten(0, 1),
+                ], dim=0),  # [n_global_crops * B + n_local_crops * B, D]
+                labels=labels["terrain"],
+                weights=labels["terrain_weight"],
+            )
+            loss_dict["terrain_loss"] = terrain_loss
+            loss_accumulator += self.terrain_loss_weight * terrain_loss
+
+        # urbanization loss
+        if self.urbanization_loss_weight > 0:
+            urbanization_loss = self.urbanization_loss(
+                pred=torch.cat([
+                    student_global['cls_after_urbanization_head'].flatten(0, 1),
+                    student_local['cls_after_urbanization_head'].flatten(0, 1),
+                ], dim=0),  # [n_global_crops * B + n_local_crops * B, D]
+                labels=labels["urbanization"],
+                weights=labels["urbanization_weight"],
+            )
+            loss_dict["urbanization_loss"] = urbanization_loss
+            loss_accumulator += self.urbanization_loss_weight * urbanization_loss
+
+        # water loss
+        if self.water_loss_weight > 0:
+            water_loss = self.water_loss(
+                pred=torch.cat([
+                    student_global['cls_after_water_head'].flatten(0, 1),
+                    student_local['cls_after_water_head'].flatten(0, 1),
+                ], dim=0),  # [n_global_crops * B + n_local_crops * B, D]
+                labels=labels["water"],
+                weights=labels["water_weight"],
+            )
+            loss_dict["water_loss"] = water_loss
+            loss_accumulator += self.water_loss_weight * water_loss
+
+        return loss_dict, loss_accumulator
 
     def compute_losses(
         self,
@@ -587,6 +1027,7 @@ class SSLMetaArch(nn.Module):
         mask_indices_list,
         masks_weight,
         iteration,
+        labels,
     ):
         n_global_crops = student_global["cls_after_head"].shape[0]
         n_local_crops = student_local["cls_after_head"].shape[0]
@@ -595,7 +1036,9 @@ class SSLMetaArch(nn.Module):
 
         # Loss scales like in DINOv2, these are multiplied with the loss weights from the config
         dino_global_terms = (
-            n_global_crops * (n_global_crops - 1) if self.dino_global_ignore_diagonal else n_global_crops**2
+            n_global_crops * (n_global_crops - 1)
+            if self.dino_global_ignore_diagonal
+            else n_global_crops**2
         )
         dino_local_terms = n_global_crops * n_local_crops
         dino_global_scale = dino_global_terms / (dino_global_terms + dino_local_terms)
@@ -643,6 +1086,9 @@ class SSLMetaArch(nn.Module):
         loss_dict["ibot_loss"] = ibot_patch_loss
         loss_accumulator += self.ibot_loss_weight * ibot_patch_loss
 
+        # additional losses
+        loss_dict, loss_accumulator = self._compute_additional_losses(loss_dict, loss_accumulator, student_global, student_local, labels)
+
         # Gram loss
         if self.gram_use_loss:
             gram_loss = self.gram_loss(
@@ -681,7 +1127,18 @@ class SSLMetaArch(nn.Module):
     @torch.no_grad()
     def gram_load_ema_teacher(self):
         if self.has_gram_teacher:
-            skip_load_prefixes = ["dino_head.", "ibot_head."]
+            skip_load_prefixes = [
+                "dino_head.",
+                "ibot_head.",
+                "buildings_head.",
+                "climate_head.",
+                "clouds_head.",
+                "coords_head.",
+                "landcover_head.",
+                "terrain_head.",
+                "urbanization_head.",
+                "water_head.",
+            ]
             self.gram_teacher.load_state_dict(
                 {
                     k: v
@@ -751,8 +1208,6 @@ class SSLMetaArch(nn.Module):
             local_crops_subset_of_global_crops=cfg.crops.localcrops_subset_of_globalcrops,
             share_color_jitter=cfg.crops.share_color_jitter,
             horizontal_flips=cfg.crops.horizontal_flips,
-            mean=cfg.crops.rgb_mean,
-            std=cfg.crops.rgb_std,
         )
 
     def get_maybe_fused_params_for_submodel(self, m: nn.Module):

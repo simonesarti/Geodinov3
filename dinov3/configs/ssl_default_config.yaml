@@ -22,7 +22,7 @@ dino:
   koleo_distributed_loss_group_size: null  # Size of the nearest neighbor set for distributed Koleo. If None, uses global batch size.
   koleo_distributed_loss_group_data: true # group data from adjacent ranks to make sure koleo is applied on the same data distribution
   force_weight_norm: false
-  reweight_dino_local_loss: false # If true, reweighting of DINO loss
+  reweight_dino_local_loss: false # If true, reweighing of DINO loss
   local_loss_weight_schedule:  # Schedule for local loss weight, enabled if reweight_dino_local_loss is true
     start: 0.5
     peak: 0.5
@@ -61,9 +61,79 @@ gram:
   global_teacher_resize_method: bicubic  # Method for resizing the outputs of the gram teacher
   global_teacher_resize_antialias: false  # Whether to use antialiasing when resizing the outputs of the gram teacher
   loss_weight_schedule: null  # (dict): If not None, use a schedule for the loss weight instead of `loss_weight`
+
+buildings:
+  loss_weight: 1.0
+  head_n_prototypes: 1
+  head_bottleneck_dim: 128
+  head_norm_last_layer: false
+  head_nlayers: 3
+  head_hidden_dim: 1024
+climate:
+  loss_weight: 1.0
+  head_n_prototypes: 30
+  head_bottleneck_dim: 128
+  head_norm_last_layer: false
+  head_nlayers: 3
+  head_hidden_dim: 1024
+clouds:
+  loss_weight: 1.0
+  head_n_prototypes: 4
+  head_bottleneck_dim: 128
+  head_norm_last_layer: false
+  head_nlayers: 3
+  head_hidden_dim: 1024
+coords:
+  loss_weight: 1.0
+  head_n_prototypes: 4
+  head_bottleneck_dim: 128
+  head_norm_last_layer: false
+  head_nlayers: 3
+  head_hidden_dim: 1024
+landcover:
+  loss_weight: 1.0
+  head_n_prototypes: 11
+  head_bottleneck_dim: 128
+  head_norm_last_layer: false
+  head_nlayers: 3
+  head_hidden_dim: 1024
+terrain:
+  loss_weight: 1.0
+  head_n_prototypes: 22
+  head_bottleneck_dim: 128
+  head_norm_last_layer: false
+  head_nlayers: 3
+  head_hidden_dim: 1024
+urbanization:
+  loss_weight: 1.0
+  head_n_prototypes: 7
+  head_bottleneck_dim: 128
+  head_norm_last_layer: false
+  head_nlayers: 3
+  head_hidden_dim: 1024
+water:
+  loss_weight: 1.0
+  head_n_prototypes: 1
+  head_bottleneck_dim: 128
+  head_norm_last_layer: false
+  head_nlayers: 3
+  head_hidden_dim: 1024
+
 train:
   batch_size_per_gpu: 64
-  dataset_path: ImageNet:split=TRAIN
+  dataset_path: MajorTOM
+  s2_patch_size: 256
+  s2_bands:
+    - "B02"
+    - "B03"
+    - "B04"
+    - "B05"
+    - "B06"
+    - "B07"
+    - "B08"
+    - "B8A"
+    - "B11"
+    - "B12"
   data_config: null
   output_dir: .
   saveckp_freq: 20

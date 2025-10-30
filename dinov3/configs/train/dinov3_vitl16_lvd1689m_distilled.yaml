@@ -69,7 +69,19 @@ gram:
   loss_weight_schedule: null
 train:
   batch_size_per_gpu: 3
-  dataset_path: <TRAIN/DATASET>
+  dataset_path: MajorTOM
+  s2_patch_size: 256
+  s2_bands:
+    - "B02"
+    - "B03"
+    - "B04"
+    - "B05"
+    - "B06"
+    - "B07"
+    - "B08"
+    - "B8A"
+    - "B11"
+    - "B12"
   output_dir: <OUTPUT/DIR>
   saveckp_freq: 20
   seed: 0

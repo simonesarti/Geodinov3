@@ -75,6 +75,19 @@ def collate_data_and_cast(
     }
     if collated_gram_teacher_crops is not None:
         out["collated_gram_teacher_crops"] = collated_gram_teacher_crops.to(dtype)
+
+    # Collate labels (return None if labels are not used)
+    labels_list = [s[1] for s in samples_list]
+    if labels_list[0] is None:
+        collated_labels = None
+    else:
+        collated_labels = {}
+        for key in labels_list[0].keys():
+            collated_labels[key] = torch.stack([lbl[key] for lbl in labels_list]).to(dtype)
+
+    if collated_labels is not None:
+        out["labels"] = collated_labels
+
     return out
 
 
