@@ -111,7 +111,6 @@ For python-based LazyConfig, use "path.key=value".
     parser.add_argument("--ref_losses_path", default="", type=str)
     parser.add_argument("--multi-distillation", action="store_true", help="run multi-distillation")
 
-
     return parser
 
 
@@ -331,7 +330,7 @@ def build_data_loader_from_cfg(
     dataset = make_dataset(
         dataset_str=cfg.train.dataset_path,
         patch_size=cfg.train.s2_patch_size,
-        bands=cfg.train.s2_patch_size,
+        bands=cfg.train.s2_bands,
         use_buildings=cfg.buildings.loss_weight > 0,
         use_climate=cfg.climate.loss_weight > 0,
         use_clouds=cfg.clouds.loss_weight > 0,
@@ -523,7 +522,7 @@ def do_train(cfg, model, resume=False):
 
         # Forward backward
         optimizer.zero_grad(set_to_none=True)
-        total_loss, metrics_dict = model.forward_backward(data, teacher_temp=teacher_temp, iteration=it)    # TODO
+        total_loss, metrics_dict = model.forward_backward(data, teacher_temp=teacher_temp, iteration=it)
 
         # Gradient clipping
         if cfg.optim.clip_grad:
@@ -631,7 +630,6 @@ def main(argv=None):
         args = get_args_parser().parse_args(argv[1:])
         args.output_dir = sys.argv[1]
     if args.multi_distillation:
-        # TODO CHECK LATER
         print("performing multidistillation run")
         cfg = setup_multidistillation(args)
         torch.distributed.barrier()
@@ -646,7 +644,7 @@ def main(argv=None):
             name="nan_logger",
         )
     meta_arch = {
-        "SSLMetaArch": SSLMetaArch,     # TODO: CONTINUE
+        "SSLMetaArch": SSLMetaArch,
         "MultiDistillationMetaArch": MultiDistillationMetaArch,     # TODO: DO
     }.get(cfg.MODEL.META_ARCHITECTURE, None)
     if meta_arch is None:

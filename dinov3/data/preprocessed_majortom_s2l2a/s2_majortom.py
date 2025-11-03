@@ -18,7 +18,7 @@ os.environ["GDAL_NUM_THREADS"] = "ALL_CPUS"
 
 from torch.utils.data import Dataset
 
-from preprocessed_majortom_s2l2a.satellite.sentinel2 import (
+from .satellite.sentinel2 import (
     get_s2_num_bands,
     get_valid_s2_band_names,
     get_sentienl2_bands_mask,
@@ -27,16 +27,16 @@ from preprocessed_majortom_s2l2a.satellite.sentinel2 import (
     S2_BANDS_NAMES,
 )
 
-from preprocessed_majortom_s2l2a.geo_utils import is_bbox_fully_contained, raster_extract_filled_bands_from_bbox, get_reference_random_offset
-from preprocessed_majortom_s2l2a.labelled.buildings import get_buildings_label
-from preprocessed_majortom_s2l2a.labelled.clouds import get_clouds_label
-from preprocessed_majortom_s2l2a.labelled.coordinates import get_coords_label
-from preprocessed_majortom_s2l2a.labelled.climate import get_climate_label
-from preprocessed_majortom_s2l2a.labelled.landcover import get_landcover_label
-from preprocessed_majortom_s2l2a.labelled.terrain import get_terrain_label
-from preprocessed_majortom_s2l2a.labelled.urbanization import get_urbanization_label
-from preprocessed_majortom_s2l2a.labelled.water import get_water_label
-from preprocessed_majortom_s2l2a.labelled.path import compose_labels_path
+from .geo_utils import is_bbox_fully_contained, raster_extract_filled_bands_from_bbox, get_reference_random_offset
+from .labelled.buildings import get_buildings_label
+from .labelled.clouds import get_clouds_label
+from .labelled.coordinates import get_coords_label
+from .labelled.climate import get_climate_label
+from .labelled.landcover import get_landcover_label
+from .labelled.terrain import get_terrain_label
+from .labelled.urbanization import get_urbanization_label
+from .labelled.water import get_water_label
+from .labelled.path import compose_labels_path
 
 
 # ================================================================

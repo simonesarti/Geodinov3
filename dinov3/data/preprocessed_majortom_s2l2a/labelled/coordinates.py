@@ -1,6 +1,6 @@
 import numpy as np
 
-from preprocessed_majortom_s2l2a.geo_utils import encode_latitude, encode_longitude
+from ..geo_utils import encode_latitude, encode_longitude
 
 
 def get_coords_label(lat: float, lng: float) -> tuple[np.ndarray, np.ndarray]:

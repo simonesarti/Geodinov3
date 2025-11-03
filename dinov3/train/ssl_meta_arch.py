@@ -135,7 +135,7 @@ class SSLMetaArch(nn.Module):
         logger.info(f"Student and Teacher are built: they are both {cfg.student.arch} network.")
 
         if cfg.distillation.enabled:
-            self._setup_distillation()  # todo
+            self._setup_distillation()
         # No grad is needed for these two
         self.teacher.requires_grad_(False)
         self.model_ema.requires_grad_(False)
@@ -463,7 +463,82 @@ class SSLMetaArch(nn.Module):
         else:
             logger.info("OPTIONS -- WATER -- not using WATER")
 
-    # todo
+    def _distillation_additional_heads(self, teacher_model_dict, embed_dim, distillation_cfg):
+
+        if distillation_cfg.buildings.loss_weight > 0:
+            teacher_model_dict["buildings_head"] = DINOHead(
+                in_dim=embed_dim,
+                out_dim=distillation_cfg.buildings.head_n_prototypes,
+                hidden_dim=distillation_cfg.buildings.head_hidden_dim,
+                bottleneck_dim=distillation_cfg.buildings.head_bottleneck_dim,
+                nlayers=distillation_cfg.buildings.head_nlayers,
+            )
+
+        if distillation_cfg.climate.loss_weight > 0:
+            teacher_model_dict["climate_head"] = DINOHead(
+                in_dim=embed_dim,
+                out_dim=distillation_cfg.climate.head_n_prototypes,
+                hidden_dim=distillation_cfg.climate.head_hidden_dim,
+                bottleneck_dim=distillation_cfg.climate.head_bottleneck_dim,
+                nlayers=distillation_cfg.climate.head_nlayers,
+            )
+
+        if distillation_cfg.clouds.loss_weight > 0:
+            teacher_model_dict["clouds_head"] = DINOHead(
+                in_dim=embed_dim,
+                out_dim=distillation_cfg.clouds.head_n_prototypes,
+                hidden_dim=distillation_cfg.clouds.head_hidden_dim,
+                bottleneck_dim=distillation_cfg.clouds.head_bottleneck_dim,
+                nlayers=distillation_cfg.clouds.head_nlayers,
+            )
+
+        if distillation_cfg.coords.loss_weight > 0:
+            teacher_model_dict["coords_head"] = DINOHead(
+                in_dim=embed_dim,
+                out_dim=distillation_cfg.coords.head_n_prototypes,
+                hidden_dim=distillation_cfg.coords.head_hidden_dim,
+                bottleneck_dim=distillation_cfg.coords.head_bottleneck_dim,
+                nlayers=distillation_cfg.coords.head_nlayers,
+            )
+
+        if distillation_cfg.landcover.loss_weight > 0:
+            teacher_model_dict["landcover_head"] = DINOHead(
+                in_dim=embed_dim,
+                out_dim=distillation_cfg.landcover.head_n_prototypes,
+                hidden_dim=distillation_cfg.landcover.head_hidden_dim,
+                bottleneck_dim=distillation_cfg.landcover.head_bottleneck_dim,
+                nlayers=distillation_cfg.landcover.head_nlayers,
+            )
+
+        if distillation_cfg.terrain.loss_weight > 0:
+            teacher_model_dict["terrain_head"] = DINOHead(
+                in_dim=embed_dim,
+                out_dim=distillation_cfg.terrain.head_n_prototypes,
+                hidden_dim=distillation_cfg.terrain.head_hidden_dim,
+                bottleneck_dim=distillation_cfg.terrain.head_bottleneck_dim,
+                nlayers=distillation_cfg.terrain.head_nlayers,
+            )
+
+        if distillation_cfg.urbanization.loss_weight > 0:
+                teacher_model_dict["urbanization_head"] = DINOHead(
+                in_dim=embed_dim,
+                out_dim=distillation_cfg.urbanization.head_n_prototypes,
+                hidden_dim=distillation_cfg.urbanization.head_hidden_dim,
+                bottleneck_dim=distillation_cfg.urbanization.head_bottleneck_dim,
+                nlayers=distillation_cfg.urbanization.head_nlayers,
+            )
+
+        if distillation_cfg.water.loss_weight > 0:
+            teacher_model_dict["water_head"] = DINOHead(
+                in_dim=embed_dim,
+                out_dim=distillation_cfg.water.head_n_prototypes,
+                hidden_dim=distillation_cfg.water.head_hidden_dim,
+                bottleneck_dim=distillation_cfg.water.head_bottleneck_dim,
+                nlayers=distillation_cfg.water.head_nlayers,
+            )
+
+        return teacher_model_dict
+
     def _setup_distillation(self):
         logger.info(f"Performing distillation from {self.cfg.distillation.full_cfg_path}")
 
@@ -495,6 +570,9 @@ class SSLMetaArch(nn.Module):
             bottleneck_dim=distillation_cfg.ibot.head_bottleneck_dim,
             nlayers=distillation_cfg.ibot.head_nlayers,
         )
+
+        teacher_model_dict = self._distillation_additional_heads(teacher_model_dict, embed_dim, distillation_cfg)
+
         self.teacher = nn.ModuleDict(teacher_model_dict)
 
     def init_weights(self) -> None:
@@ -858,43 +936,43 @@ class SSLMetaArch(nn.Module):
         if self.buildings_loss_weight > 0:
             buffer_buildings = self.student.buildings_head(buffer_gl)
             buffer_buildings = torch.split_with_sizes(buffer_buildings, sizes, dim=0)   # [n_global_crops * B + n_local_crops * B, D]
-            global_additional_out["cls_after_buildings_head"] = buffer_buildings[0].unflatten(0, [n_global_crops, B]),  # [n_global_crops, B, K],
-            local_additional_out["cls_after_buildings_head"] = buffer_buildings[1].unflatten(0, [n_local_crops, B]),  # [n_local_crops, B, K],
+            global_additional_out["cls_after_buildings_head"] = buffer_buildings[0].unflatten(0, [n_global_crops, B])  # [n_global_crops, B, K],
+            local_additional_out["cls_after_buildings_head"] = buffer_buildings[1].unflatten(0, [n_local_crops, B])  # [n_local_crops, B, K],
         if self.climate_loss_weight > 0:
             buffer_climate = self.student.climate_head(buffer_gl)
             buffer_climate = torch.split_with_sizes(buffer_climate, sizes, dim=0)   # [n_global_crops * B + n_local_crops * B, D]
-            global_additional_out["cls_after_climate_head"] = buffer_climate[0].unflatten(0, [n_global_crops, B]),  # [n_global_crops, B, K],
-            local_additional_out["cls_after_climate_head"] = buffer_climate[1].unflatten(0, [n_local_crops, B]),  # [n_local_crops, B, K],
+            global_additional_out["cls_after_climate_head"] = buffer_climate[0].unflatten(0, [n_global_crops, B])  # [n_global_crops, B, K],
+            local_additional_out["cls_after_climate_head"] = buffer_climate[1].unflatten(0, [n_local_crops, B])  # [n_local_crops, B, K],
         if self.clouds_loss_weight > 0:
             buffer_clouds = self.student.clouds_head(buffer_gl)
             buffer_clouds = torch.split_with_sizes(buffer_clouds, sizes, dim=0)     # [n_global_crops * B + n_local_crops * B, D]
-            global_additional_out["cls_after_clouds_head"] = buffer_clouds[0].unflatten(0, [n_global_crops, B]),  # [n_global_crops, B, K],
-            local_additional_out["cls_after_clouds_head"] = buffer_clouds[1].unflatten(0, [n_local_crops, B]),  # [n_local_crops, B, K],
+            global_additional_out["cls_after_clouds_head"] = buffer_clouds[0].unflatten(0, [n_global_crops, B])  # [n_global_crops, B, K],
+            local_additional_out["cls_after_clouds_head"] = buffer_clouds[1].unflatten(0, [n_local_crops, B])  # [n_local_crops, B, K],
         if self.coords_loss_weight > 0:
-            buffer_coords =self.student.coords_head(buffer_gl)
+            buffer_coords = self.student.coords_head(buffer_gl)
             buffer_coords = torch.split_with_sizes(buffer_coords, sizes, dim=0)     # [n_global_crops * B + n_local_crops * B, D]
-            global_additional_out["cls_after_coords_head"] = buffer_coords[0].unflatten(0, [n_global_crops, B]),  # [n_global_crops, B, K],
-            local_additional_out["cls_after_coords_head"] = buffer_coords[1].unflatten(0, [n_local_crops, B]),  # [n_local_crops, B, K],
+            global_additional_out["cls_after_coords_head"] = buffer_coords[0].unflatten(0, [n_global_crops, B])  # [n_global_crops, B, K],
+            local_additional_out["cls_after_coords_head"] = buffer_coords[1].unflatten(0, [n_local_crops, B])  # [n_local_crops, B, K],
         if self.landcover_loss_weight > 0:
             buffer_landcover = self.student.landcover_head(buffer_gl)
             buffer_landcover = torch.split_with_sizes(buffer_landcover, sizes, dim=0)   # [n_global_crops * B + n_local_crops * B, D]
-            global_additional_out["cls_after_landcover_head"] = buffer_landcover[0].unflatten(0, [n_global_crops, B]),  # [n_global_crops, B, K],
-            local_additional_out["cls_after_landcover_head"] = buffer_landcover[1].unflatten(0, [n_local_crops, B]),  # [n_local_crops, B, K],
+            global_additional_out["cls_after_landcover_head"] = buffer_landcover[0].unflatten(0, [n_global_crops, B])  # [n_global_crops, B, K],
+            local_additional_out["cls_after_landcover_head"] = buffer_landcover[1].unflatten(0, [n_local_crops, B])  # [n_local_crops, B, K],
         if self.terrain_loss_weight > 0:
-            buffer_terrain =self.student.terrain_head(buffer_gl)
+            buffer_terrain = self.student.terrain_head(buffer_gl)
             buffer_terrain = torch.split_with_sizes(buffer_terrain, sizes, dim=0)   # [n_global_crops * B + n_local_crops * B, D]
-            global_additional_out["cls_after_terrain_head"] = buffer_terrain[0].unflatten(0, [n_global_crops, B]),  # [n_global_crops, B, K],
-            local_additional_out["cls_after_terrain_head"] = buffer_terrain[1].unflatten(0, [n_local_crops, B]),  # [n_local_crops, B, K],
+            global_additional_out["cls_after_terrain_head"] = buffer_terrain[0].unflatten(0, [n_global_crops, B])  # [n_global_crops, B, K],
+            local_additional_out["cls_after_terrain_head"] = buffer_terrain[1].unflatten(0, [n_local_crops, B])  # [n_local_crops, B, K],
         if self.urbanization_loss_weight > 0:
-            buffer_urbanization =self.student.urbanization_head(buffer_gl)
+            buffer_urbanization = self.student.urbanization_head(buffer_gl)
             buffer_urbanization = torch.split_with_sizes(buffer_urbanization, sizes, dim=0)     # [n_global_crops * B + n_local_crops * B, D]
-            global_additional_out["cls_after_urbanization_head"] = buffer_urbanization[0].unflatten(0, [n_global_crops, B]),  # [n_global_crops, B, K],
-            local_additional_out["cls_after_urbanization_head"] = buffer_urbanization[1].unflatten(0, [n_local_crops, B]),  # [n_local_crops, B, K],
+            global_additional_out["cls_after_urbanization_head"] = buffer_urbanization[0].unflatten(0, [n_global_crops, B])  # [n_global_crops, B, K],
+            local_additional_out["cls_after_urbanization_head"] = buffer_urbanization[1].unflatten(0, [n_local_crops, B])  # [n_local_crops, B, K],
         if self.water_loss_weight > 0:
-            buffer_water =self.student.water_head(buffer_gl)
+            buffer_water = self.student.water_head(buffer_gl)
             buffer_water = torch.split_with_sizes(buffer_water, sizes, dim=0)   # [n_global_crops * B + n_local_crops * B, D]
-            global_additional_out["cls_after_water_head"] = buffer_water[0].unflatten(0, [n_global_crops, B]),  # [n_global_crops, B, K],
-            local_additional_out["cls_after_water_head"] = buffer_water[1].unflatten(0, [n_local_crops, B]),  # [n_local_crops, B, K],
+            global_additional_out["cls_after_water_head"] = buffer_water[0].unflatten(0, [n_global_crops, B])  # [n_global_crops, B, K],
+            local_additional_out["cls_after_water_head"] = buffer_water[1].unflatten(0, [n_local_crops, B])  # [n_local_crops, B, K],
 
         global_out.update(global_additional_out)
         local_out.update(local_additional_out)

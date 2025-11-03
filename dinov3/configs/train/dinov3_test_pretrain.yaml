@@ -71,7 +71,7 @@ train:
   cell_augmentation_type: hpa
   sharded_eval_checkpoint: true
 student:
-  arch: vit_7b
+  arch: geovit_base
   patch_size: 16
   drop_path_rate: 0.4
   layerscale: 1.0e-05
@@ -98,7 +98,7 @@ student:
   pos_embed_rope_jitter_coords: null
   pos_embed_rope_rescale_coords: 2
   pos_embed_rope_dtype: fp32
-  fp8_enabled: true
+  fp8_enabled: false
   fp8_filter: blocks
 teacher:
   momentum_teacher: null

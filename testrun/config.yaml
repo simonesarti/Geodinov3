@@ -20,7 +20,14 @@ dino:
   koleo_topk: 1
   koleo_distributed_replicas: 0
   koleo_distributed_loss_group_size: null
+  koleo_distributed_loss_group_data: true
   force_weight_norm: false
+  reweight_dino_local_loss: false
+  local_loss_weight_schedule:
+    start: 0.5
+    peak: 0.5
+    end: 0.5
+    warmup_epochs: 0
 ibot:
   loss_weight: 1.0
   mask_sample_probability: 0.5
@@ -38,28 +45,101 @@ ibot:
 gram:
   use_loss: false
   compute_stats: false
+  loss_weight: 1.0
+  ema_teacher: false
+  ckpt: null
+  it_load_ema_teacher: -1
+  rep_update: true
+  update_frequency: 50000
+  it_first_update: 0
+  max_updates: null
+  normalized: true
+  img_level: false
+  remove_neg: false
+  remove_only_teacher_neg: false
+  tokens_used: all
+  global_teacher_resize_method: bicubic
+  global_teacher_resize_antialias: false
+  loss_weight_schedule: null
+buildings:
+  loss_weight: 1.0
+  head_n_prototypes: 1
+  head_bottleneck_dim: 128
+  head_norm_last_layer: false
+  head_nlayers: 3
+  head_hidden_dim: 1024
+climate:
+  loss_weight: 1.0
+  head_n_prototypes: 30
+  head_bottleneck_dim: 128
+  head_norm_last_layer: false
+  head_nlayers: 3
+  head_hidden_dim: 1024
+clouds:
+  loss_weight: 1.0
+  head_n_prototypes: 4
+  head_bottleneck_dim: 128
+  head_norm_last_layer: false
+  head_nlayers: 3
+  head_hidden_dim: 1024
+coords:
+  loss_weight: 1.0
+  head_n_prototypes: 4
+  head_bottleneck_dim: 128
+  head_norm_last_layer: false
+  head_nlayers: 3
+  head_hidden_dim: 1024
+landcover:
+  loss_weight: 1.0
+  head_n_prototypes: 11
+  head_bottleneck_dim: 128
+  head_norm_last_layer: false
+  head_nlayers: 3
+  head_hidden_dim: 1024
+terrain:
+  loss_weight: 1.0
+  head_n_prototypes: 22
+  head_bottleneck_dim: 128
+  head_norm_last_layer: false
+  head_nlayers: 3
+  head_hidden_dim: 1024
+urbanization:
+  loss_weight: 1.0
+  head_n_prototypes: 7
+  head_bottleneck_dim: 128
+  head_norm_last_layer: false
+  head_nlayers: 3
+  head_hidden_dim: 1024
+water:
+  loss_weight: 1.0
+  head_n_prototypes: 1
+  head_bottleneck_dim: 128
+  head_norm_last_layer: false
+  head_nlayers: 3
+  head_hidden_dim: 1024
 train:
   batch_size_per_gpu: 16
   dataset_path: MajorTOM
   s2_patch_size: 256
   s2_bands:
-    - "B02"
-    - "B03"
-    - "B04"
-    - "B05"
-    - "B06"
-    - "B07"
-    - "B08"
-    - "B8A"
-    - "B11"
-    - "B12"
+  - B02
+  - B03
+  - B04
+  - B05
+  - B06
+  - B07
+  - B08
+  - B8A
+  - B11
+  - B12
+  data_config: null
+  output_dir: /davinci-1/home/msarti/projects/ESA-FM/Geodinov3/testrun
   saveckp_freq: 20
   seed: 0
   num_workers: 10
   OFFICIAL_EPOCH_LENGTH: 1000
   monitor_gradient_norm: false
   chunk_schedule: []
-  cache_dataset: true
   use_teacher_head: true
   learn_from_teacher_tokens: false
   centering: sinkhorn_knopp
@@ -67,15 +147,15 @@ train:
   checkpointing_full: false
   compile: true
   cudagraphs: false
+  sharded_eval_checkpoint: true
+  cache_dataset: true
   cell_augmentation: false
   cell_augmentation_type: hpa
-  sharded_eval_checkpoint: true
 student:
-  arch: vit_7b
+  arch: geovit_base
   patch_size: 16
   drop_path_rate: 0.4
   layerscale: 1.0e-05
-  patch_drop: 0.0
   pretrained_weights: ''
   ffn_layer: swiglu64
   ffn_ratio: 3
@@ -85,9 +165,9 @@ student:
   ffn_bias: true
   norm_layer: layernormbf16
   n_storage_tokens: 4
+  mask_k_bias: true
   untie_cls_and_patch_norms: false
   untie_global_and_local_cls_norm: true
-  mask_k_bias: true
   in_chans: 3
   pos_embed_type: rope
   pos_embed_rope_base: 100
@@ -98,8 +178,9 @@ student:
   pos_embed_rope_jitter_coords: null
   pos_embed_rope_rescale_coords: 2
   pos_embed_rope_dtype: fp32
-  fp8_enabled: true
+  fp8_enabled: false
   fp8_filter: blocks
+  patch_drop: 0.0
 teacher:
   momentum_teacher: null
   final_momentum_teacher: null
@@ -145,9 +226,12 @@ crops:
   - 0.32
   global_crops_size: 256
   local_crops_size: 112
+  global_local_crop_pairs_ratios: 1.0
+  gram_teacher_crops_size: null
   localcrops_subset_of_globalcrops: false
   share_color_jitter: false
   horizontal_flips: false
+  gram_teacher_no_distortions: false
   rgb_mean:
   - 0.485
   - 0.456
@@ -156,6 +240,12 @@ crops:
   - 0.229
   - 0.224
   - 0.225
+evaluation:
+  eval_period_iterations: 12500
+  low_freq_every: 5
+  config_files:
+    high_freq: benchmark_high_frequency.yaml
+    low_freq: benchmark_low_frequency.yaml
 checkpointing:
   period: 1000
   max_to_keep: 3
