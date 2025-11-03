@@ -85,8 +85,7 @@ def collate_data_and_cast(
         for key in labels_list[0].keys():
             collated_labels[key] = torch.stack([lbl[key] for lbl in labels_list]).to(dtype)
 
-    if collated_labels is not None:
-        out["labels"] = collated_labels
+    out["labels"] = collated_labels
 
     return out
 
