@@ -45,6 +45,8 @@ class MultiDistillationMetaArch(SSLMetaArch):
         n_masked_patches_tensor = data["n_masked_patches"].cuda(non_blocking=True)
         global_batch_size = data["global_batch_size"]
 
+        labels = {k: v.cuda(non_blocking=True) for k, v in data["labels"].items()} if data["labels"] is not None else None
+
         # Multidistillation codepath:
         global_crops_subgroup = self.broadcast_to_subgroups(
             global_crops.view(n_global_crops, -1, *global_crops.shape[1:]),
@@ -88,6 +90,7 @@ class MultiDistillationMetaArch(SSLMetaArch):
             masks_weight=masks_weight,
             gram_global=None,
             iteration=iteration,
+            labels=labels,
         )
 
         self.backprop_loss(loss_accumulator)

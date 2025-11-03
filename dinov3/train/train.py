@@ -645,7 +645,7 @@ def main(argv=None):
         )
     meta_arch = {
         "SSLMetaArch": SSLMetaArch,
-        "MultiDistillationMetaArch": MultiDistillationMetaArch,     # TODO: DO
+        "MultiDistillationMetaArch": MultiDistillationMetaArch,
     }.get(cfg.MODEL.META_ARCHITECTURE, None)
     if meta_arch is None:
         raise ValueError(f"Unknown MODEL.META_ARCHITECTURE {cfg.MODEL.META_ARCHITECTURE}")
